@@ -198,7 +198,7 @@ def kubenetes_deployment(request):
     }
     if request.method == "GET":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/" + appName)
-        kube_data = requests.request(method=request.method,url=url,verify=False,headers=kube_headers)
+        kube_data = requests.request(method=request.method,url=url,headers=kube_headers)
         response = {
             "result" : True,
             "data": deployment,
@@ -208,11 +208,11 @@ def kubenetes_deployment(request):
         return HttpResponse(json.dumps(response))
     if request.method == "POST":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/")
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(deployment))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(deployment))
         return HttpResponse(response)
     if request.method == "PUT":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/" + appName)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(deployment))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(deployment))
         return HttpResponse(response)
 
 
@@ -255,7 +255,7 @@ def kubenetes_service(request):
     }
     if request.method == "GET":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/" + appName)
-        kube_data = requests.request(method=request.method,url=url,verify=False,headers=kube_headers).text
+        kube_data = requests.request(method=request.method,url=url,headers=kube_headers).text
         # print kube_data.text
         response = {
             "result" : True,
@@ -266,11 +266,11 @@ def kubenetes_service(request):
         return HttpResponse(json.dumps(response))
     if request.method == "PUT":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/" + appName)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(service))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(service))
         return HttpResponse(response)
     if request.method == "POST":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/")
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(service))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(service))
         return HttpResponse(response)
 
 
@@ -299,15 +299,15 @@ def config_map(request):
     }
     if request.method == 'POST':
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/")
-        response = requests.request(method="POST",url=url,verify=False,headers=kube_headers,data=json.dumps(data))
+        response = requests.request(method="POST",url=url,headers=kube_headers,data=json.dumps(data))
         return HttpResponse(response)
     if request.method == 'GET':
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/" + appName)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers)
+        response = requests.request(method=request.method,url=url,headers=kube_headers)
         return HttpResponse(response)
     if request.method == "PUT":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/" + appName)
         data["data"] = json.loads(request.body)
         print json.dumps(data)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(data))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(data))
         return HttpResponse(response)
