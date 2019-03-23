@@ -1,0 +1,61 @@
+pipeline {
+  agent any
+  stages {
+    stage('build') {
+      steps {
+        sh '''#!/bin/bash
+pwd
+docker version
+ls -l
+old_id=`docker images ${image} -q`
+docker build -t ${image} -f ./dockerfile .
+new_id=`docker images ${image} -q`
+if [ ${old_id} != ${new_id} ];then
+	docker rmi ${old_id}
+fi
+docker push ${image}'''
+      }
+    }
+    stage('deploy') {
+      parallel {
+        stage('alpha') {
+          steps {
+            input 'is depoy alpha'
+            echo 'begin to deploy alpha'
+            sh '''#!/bin/bash
+echo \'print configmap\'
+curl --request GET   --url "http://${smsAddr}/v1/config_map?MicServiceId=${MicServiceId}&envId=alpha" | python -m json.tool
+
+echo \'update service\'
+curl --request PUT   --url "http://${smsAddr}/v1/kubenetes_service?MicServiceId=${MicServiceId}&envId=alpha"
+if [ $? -eq 0 ];then
+	echo "update service success!"
+fi
+curl --request GET   --url "http://${smsAddr}/v1/kubenetes_service?MicServiceId=${MicServiceId}&envId=alpha" | python -m json.tool
+
+echo \'update deployment\'
+curl --request PUT   --url "http://${smsAddr}/v1/kubenetes_deployment?MicServiceId=${MicServiceId}&envId=alpha"
+if [ $? -eq 0 ];then
+	echo "update deployment success!"
+fi
+curl --request GET   --url "http://${smsAddr}/v1/kubenetes_deployment?MicServiceId=${MicServiceId}&envId=alpha" |python -m json.tool
+
+'''
+          }
+        }
+        stage('beta') {
+          steps {
+            echo 'start to deploy beta'
+            input 'is deploy beta'
+          }
+        }
+      }
+    }
+  }
+  environment {
+    appName = '{{ info.name }}'
+    MicServiceId = '{{ info.MicServiceId }}'
+    image = '{{ info.image }}:1.1.0'
+    smsAddr = '{{ info.smsAddr }}'
+  }
+}

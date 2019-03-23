@@ -1,0 +1,62 @@
+pipeline {
+  agent any
+  stages {
+    stage('build') {
+      steps {
+        sh '''#!/bin/bash
+pwd
+docker version
+echo ${image}:${version}
+tag=${version}
+docker build -t ${image}:${tag} -f ./dockerfile .
+docker push ${image}:${tag}
+docker rmi ${image}:${tag}'''
+      }
+    }
+    stage('deploy') {
+      parallel {
+        stage('alpha') {
+          when { environment name: 'is_deploy_alpha', value: 'true' }
+          steps {
+            sh '''#!/bin/bash
+echo \'print configmap\'
+curl --request GET   --url "http://${smsAddr}/v1/config_map?MicServiceId=${MicServiceId}&envId=alpha" | python -m json.tool
+
+echo \'update service\'
+curl --request PUT   --url "http://${smsAddr}/v1/kubenetes_service?MicServiceId=${MicServiceId}&envId=alpha"
+if [ $? -eq 0 ];then
+	echo "update service success!"
+fi
+curl --request GET   --url "http://${smsAddr}/v1/kubenetes_service?MicServiceId=${MicServiceId}&envId=alpha" | python -m json.tool
+	
+echo \'update deployment\'
+curl --request PUT   --url "http://${smsAddr}/v1/kubenetes_deployment?MicServiceId=${MicServiceId}&envId=alpha&version=${version}"
+if [ $? -eq 0 ];then
+	echo "update deployment success!"
+fi
+curl --request GET   --url "http://${smsAddr}/v1/kubenetes_deployment?MicServiceId=${MicServiceId}&envId=alpha" |python -m json.tool
+
+'''
+          }
+        }
+        stage('beta') {
+          when { environment name: 'is_deploy_beta', value: 'true' }
+          steps {
+            echo 'start to deploy beta'
+          }
+        }
+      }
+    }
+  }
+  environment {
+    appName = 'monitor-account'
+    MicServiceId = '12'
+    image = 'docker-hub.alpha.tools.huawei.com/lufeng/django-app'
+    smsAddr = '10.65.75.125:8888'
+  }
+  parameters {
+    string(defaultValue: 'snapshot', description: 'version ? snapshot or version number', name: 'version', trim: false)
+    booleanParam(defaultValue: true, description: '', name: 'is_deploy_alpha')
+    booleanParam(defaultValue: false, description: '', name: 'is_deploy_beta')
+  }
+}
