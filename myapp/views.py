@@ -21,7 +21,9 @@ def health_check(request):
 namespace = "msm"
 # kube_server = "http://100.101.93.72:8080"
 kube_server = "https://192.168.1.6:82/k8s/clusters/c-vmmmm"
-kube_headers = {}
+kube_headers = {
+        'Authorization': "Bearer kubeconfig-user-xrmxp:4wnwmzm4rqml6tnmd959bcmt9n9hj29llmwmb8xt47hg75xvzcpbvh",
+}
 
 
 # 定义response 标准格式
