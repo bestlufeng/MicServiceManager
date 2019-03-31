@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 from django.shortcuts import render,HttpResponse,HttpResponseRedirect
+from django.http import JsonResponse
 import models
 import time,datetime,json
 import requests
@@ -9,13 +10,29 @@ from kubernetes.client.rest import ApiException
 from pprint import pprint
 
 # Create your views here.
+
+# 封装Httpresponse
+# class JSONResponse(HttpResponse):
+#     """
+#     An HttpResponse that renders its content into JSON.
+#     """
+#     def __init__(self, data, **kwargs):
+#         content = JSONRenderer().render(data)
+#         kwargs['content_type'] = 'application/json'
+#         super(JSONResponse, self).__init__(content, **kwargs)
+
 # 主页跳转到前端页面
 def index(request):
     return HttpResponseRedirect('/static/index.html')
 
 # 健康检查地址
 def health_check(request):
-    return HttpResponse("true")
+    # return HttpResponse("true")
+    a = {
+        "result": True,
+        "data": "yes"
+    }
+    return JsonResponse(a,safe=True)
 
 # 后期更改的默认值
 namespace = "msm"
@@ -26,12 +43,7 @@ kube_headers = {
 }
 
 
-# 定义response 标准格式
-std_use_response = {
-    "result": True,
-    "data": "",
-    "message": ""
-}
+
 
 def mic_service(request):
     std_response = {
