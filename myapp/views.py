@@ -11,15 +11,22 @@ from pprint import pprint
 
 # Create your views here.
 
-# 封装Httpresponse
-# class JSONResponse(HttpResponse):
-#     """
-#     An HttpResponse that renders its content into JSON.
-#     """
-#     def __init__(self, data, **kwargs):
-#         content = JSONRenderer().render(data)
-#         kwargs['content_type'] = 'application/json'
-#         super(JSONResponse, self).__init__(content, **kwargs)
+# 定义response标准格式
+def str_response(data,**kwargs):
+    if kwargs.has_key("message"):
+        str_message = kwargs["message"]
+    else:
+        str_message = ""
+    if kwargs.has_key("result"):
+        str_result = kwargs["result"]
+    else:
+        str_result = True
+    response = {
+        "result": str_result,
+        "data": data,
+        "message": str_message,
+    }
+    return json.dumps(response)
 
 # 主页跳转到前端页面
 def index(request):
