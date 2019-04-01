@@ -1,0 +1,383 @@
+pipeline {
+
+  // 构建节点
+  agent {
+    label 'master'
+  }
+
+  stages {
+    stage ('初始化') {
+      steps {
+        echo 'ci 初始化，检验参数'
+      }
+      
+    }
+    stage('拉取代码') {
+      steps {
+        echo '从gitlab获取代码'
+        git(url: {{ params.gitlab_url }}, credentialsId: env.gitlab_credentials_id, branch: {{ params.gitlab_branch }})
+      }
+    }
+    stage('构建') {
+      steps {
+        echo '使用maven打包项目'
+        withMaven(maven: 'Maven3', mavenLocalRepo: '.repository') {
+          script {
+            if (params.deploy_target == 'dx' || params.deploy_target == 'paas'){
+                if (params.project_directory != '/') {
+                  sh "mvn clean -pl ${params.project_directory} -am -amd -DskipTests -U package -X"
+                  }
+                else  {
+                  sh "mvn clean -DskipTests -U package -X"
+                  }
+            } else {
+                if (params.project_directory != '/') {
+                  sh "mvn clean -pl ${params.project_directory} -am -amd -DskipTests -U package -Dproduct.id=${params.application_product_id} -q -X"
+                  }
+                else  {
+                  sh "mvn clean -DskipTests -U package -Dproduct.id=${params.application_product_id} -q -X"
+                  }
+            }
+          }
+        }
+      }
+    }
+    stage('生成镜像') {
+      steps {
+        echo '构建docker镜像'
+        script {
+          dockerfile_path = params.dockerfile_path
+          pomfile_path = 'pom.xml'
+          //默认启动打包的程序包在target/下面
+          image_start_file = 'target/'
+          //默认dockerfile存放位置在每个工程的此路径下
+          if (params.dockerfile_path == '-') {
+            dockerfile_path = 'src/main/resources/Dockerfile'
+          }
+          //如果是有子工程的，不是以/开始的，就带上子工程名字再加上src/main/.....
+          if (params.project_directory != '/') {
+            if (params.dockerfile_path == '-') {
+              dockerfile_path = params.project_directory + '/' + dockerfile_path
+            } else {
+              dockerfile_path = params.dockerfile_path
+            }
+            pomfile_path = params.project_directory + '/' + pomfile_path
+            image_start_file = params.project_directory + '/' + image_start_file
+          }
+          pom = readMavenPom file:pomfile_path
+          pom_artifact_id = pom.artifactId
+          pom_version = pom.version
+          if (pom_version == null) {
+            pom_version = readMavenPom().getVersion()
+          }
+          soure_image = params.application_name + ':' + pom_version
+          image_name = env.harbor_url + '/' + params.harbor_project + '/' + params.application_name + ':' + pom_version
+          if (image_name == null || image_name == '') {
+            error '镜像名称（image_name）生成失败'
+          }
+          image_start_file = image_start_file
+          if (params.docker_start_mode == 'script') {
+            image_start_file = image_start_file + params.application_name
+          } else if (params.docker_start_mode == 'jar') {
+            image_start_file = image_start_file + pom_artifact_id + "-" + pom_version + '.jar'
+          } else if (params.docker_start_mode == 'war') {
+            //image_start_file = image_start_file + pom_artifact_id + "-" + pom_version + '.war'
+            image_start_file = image_start_file + 'ROOT.war'
+          } else {
+            error '未知的镜像启动方式：' + params.docker_start_mode
+          }
+          sh "rm -rf tmpdockerfile"
+          sh "mkdir tmpdockerfile"
+          sh "mv \"${image_start_file}\" tmpdockerfile/"
+          image_start_dir = 'tmpdockerfile/'
+          image_start_file = image_start_dir + 'ROOT.war'
+            if (params.docker_start_mode == 'script') {
+              sh "cp ${dockerfile_path} Dockerfile"
+          } else {
+              if (params.deploy_target == 'paas') {
+                sh "curl ${paas_dockerFile} > tmpdockerfile/Dockerfile"
+              } else {
+                sh "curl ${docker_file} > tmpdockerfile/Dockerfile"
+              }
+          }
+        }
+        //sh "docker build -t ${image_name} --build-arg target_file=\"${image_start_file}\" \"${image_start_dir}\""
+        sh "docker build -t ${image_name}  \"${image_start_dir}\""
+        withCredentials([usernamePassword(credentialsId: env.docker_hub_credentials_id, passwordVariable: 'dockerHubPassword', usernameVariable: 'dockerHubUser')]) {
+          echo '登录镜像服务器'
+          sh "docker login -u \${dockerHubUser} -p \${dockerHubPassword} ${env.harbor_url}"
+          echo '推送镜像到镜像服务器'
+          sh "docker push ${image_name}"
+        }
+        echo '删除本地镜像'
+        sh "docker rmi ${image_name}"
+        sh "rm -rf \"${image_start_dir}\""
+      }
+    }
+    stage('发布准备') {
+      steps {
+        script {
+          kubernetes_filename = params.application_name + '-config.yaml'
+          kubernetes_deployment_name = 'deployment-' + params.application_name
+          kubernetes_service_name = params.application_name + '-service'
+          echo '生成kubernetes yaml文件'
+          if (params.is_external_service == 'true') {
+          sh """
+rm -rf ${kubernetes_filename}
+cat << EOF > ${kubernetes_filename}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${params.application_name}
+  namespace: ${params.kubernetes_namespace}
+  labels:
+    app: ${kubernetes_deployment_name}
+    version: v1
+spec:
+  selector:
+    matchLabels:
+      app: ${kubernetes_deployment_name}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  replicas: ${params.kubernetes_pod_number}
+  template:
+    metadata:
+      labels:
+        app: ${kubernetes_deployment_name}
+    spec:
+      containers:
+      - name: ${params.application_name}
+        image: ${image_name}
+        imagePullPolicy: Always
+        env:
+        - name: JAVA_OPTS
+          value: "${params.JVM_MEM} -Dspring.profiles.active=${params.application_profiles}"
+        envFrom:
+        - configMapRef:
+            name: app-env-config
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+     #   resources:
+     #     limits:
+     #       memory: 1024Mi
+        volumeMounts:
+        - name: localtime-config
+          mountPath: /etc/localtime
+        - name: timezone-config
+          mountPath: /etc/timezone
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+          fab: ${params.kubernetes_namespace}
+      volumes:
+      - name: localtime-config
+        hostPath:
+          path: /etc/localtime
+      - name: timezone-config
+        hostPath:
+          path: /etc/timezone
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    app: ${kubernetes_service_name}
+  name: ${kubernetes_service_name}
+  namespace: ${params.kubernetes_namespace}
+spec:
+  selector:
+    app: ${kubernetes_deployment_name}
+  ports:
+  - name: http
+    nodePort: ${params.kubernetes_external_port}    #和type: NodePort同开同注释
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  sessionAffinity: None
+  type: NodePort   #和nodePort: 31381同开同注释
+EOF"""
+          }
+
+else {
+sh """
+rm -rf ${kubernetes_filename}
+cat << EOF > ${kubernetes_filename}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${params.application_name}
+  namespace: ${params.kubernetes_namespace}
+  labels:
+    app: ${kubernetes_deployment_name}
+    version: v1
+spec:
+  selector:
+    matchLabels:
+      app: ${kubernetes_deployment_name}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  replicas: ${params.kubernetes_pod_number}
+  template:
+    metadata:
+      labels:
+        app: ${kubernetes_deployment_name}
+    spec:
+      containers:
+      - name: ${params.application_name}
+        image: ${image_name}
+        imagePullPolicy: Always
+        env:
+        - name: JAVA_OPTS
+          value: "${params.JVM_MEM} -Dspring.profiles.active=${params.application_profiles}"
+        envFrom:
+        - configMapRef:
+            name: app-env-config
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+     #   resources:
+     #     limits:
+     #       memory: 1024Mi
+        volumeMounts:
+        - name: localtime-config
+          mountPath: /etc/localtime
+        - name: timezone-config
+          mountPath: /etc/timezone
+      restartPolicy: Always
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+          fab: ${params.kubernetes_namespace}
+      volumes:
+      - name: localtime-config
+        hostPath:
+          path: /etc/localtime
+      - name: timezone-config
+        hostPath:
+          path: /etc/timezone
+---
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    app: ${kubernetes_service_name}
+  name: ${kubernetes_service_name}
+  namespace: ${params.kubernetes_namespace}
+spec:
+  selector:
+    app: ${kubernetes_deployment_name}
+  ports:
+  - name: http
+#    nodePort: ${params.kubernetes_external_port}    #和type: NodePort同开同注释
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  sessionAffinity: None
+#  type: NodePort   #和nodePort: 31381同开同注释
+  type: ClusterIP
+EOF"""
+          }
+        }
+      }
+    }
+    stage ('发布') {
+
+      steps {
+        script {
+          if (params.deploy_target == 'unipay') {
+            deploy_target_config = env.unipay_config
+          } else if (params.deploy_target == 'test') {
+            deploy_target_config = env.unipaytest_config
+          } else if (params.deploy_target == 'dx') {
+            deploy_target_config=''
+          } else if (params.deploy_target == 'paas'){
+            deploy_target_config=''
+          }else {
+            error '未知的发布平台：' + params.deploy_target
+          }
+
+
+        if (params.deploy_type == 'ssh') {
+        echo '发布'
+            sshPublisher(publishers: [sshPublisherDesc(configName: deploy_target_config, transfers: [sshTransfer(cleanRemote: false, excludes: '',
+        execCommand: """
+        curl -s ${deploy_shell} | sh -s ${params.application_name} ${image_name} ${kubernetes_filename} ${kubernetes_namespace}
+""",
+        execTimeout: 1200000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: '', sourceFiles: "${kubernetes_filename}")], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+        }
+        else if (params.deploy_type == 'yaml'){
+            sh """curl --request POST  \
+          --url ${params.Interface_host}/jenkins-pipeline/upload  \
+          --header 'content-type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW' \
+          --form myfile=@${kubernetes_filename} \
+          --form username=JYMsBzC8FzqnNX  \
+          --form password=BVXHlOSrFcLEl1wLd6Jg56NCg6L
+          """
+        } else if (params.deploy_type == 'image'){
+              sh """ curl --request POST \
+              --url ${params.Interface_host}/jenkins-pipeline/docker-images \
+              --header 'Postman-Token: 55d48fd7-59bd-4e63-9a6e-a5f161abd7bc' \
+              --header 'cache-control: no-cache' \
+              --header 'content-type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW' \
+              --form username=JYMsBzC8FzqnNX \
+              --form password=BVXHlOSrFcLEl1wLd6Jg56NCg6L \
+              --form images=${soure_image}
+              """
+        }
+        }
+      }
+    }
+  }
+  // 定义全局变量
+  environment {
+    gitlab_credentials_id='78a09dc6-bd53-47bb-88b3-f0d42ec4eb01'
+    docker_hub_credentials_id='jenkins-docker-repository'
+    harbor_url='harbor.chuangjiangx.com'
+    deploy_shell='http://jenkins-package.oss-cn-hangzhou.aliyuncs.com/script/back-end/deploy-backend-k8s.sh'
+    docker_file='http://jenkins-package.oss-cn-hangzhou.aliyuncs.com/script/docker/Dockerfile'
+    paas_dockerFile='http://jenkins-package.oss-cn-hangzhou.aliyuncs.com/script/docker/paas_dockerfile'
+
+    unipay_config='unipay-master'
+    unipaytest_config='test-master'
+  }
+
+  // 外部工作流程传入参数
+  parameters{
+    // gitlab配置
+    string defaultValue: null, description: '应用名，必须传入', name: 'application_name', trim:true
+    string defaultValue: '/', description: 'git上项目路径', name: 'project_directory', trim:true
+    string defaultValue: null, description: '项目gitlab地址，必须录入', name: 'gitlab_url', trim: true
+    string defaultValue: null, description: '项目gitlab分支，必须录入', name: 'gitlab_branch', trim: true
+
+    // mvn 配置
+    string defaultValue: 'dev', description: '打包profile', name:'application_profiles', trim: true
+    string defaultValue: '0', description: '创匠云产品ID，电信不需要传', name:'application_product_id', trim:true
+
+    // docker构建配置
+    string defaultValue: '-', description: 'dockerfile文件的路径', name:'dockerfile_path', trim:true
+    string defaultValue: 'test',description: 'harbor仓库项目', name: 'harbor_project', trim: true
+    choice choices: ['script', 'jar', 'war'], description: 'Docker启动方式', name: 'docker_start_mode'
+
+    // k8s配置
+    string defaultValue: '1', description: '服务节点数量', name: 'kubernetes_pod_number', trim: true
+    string defaultValue: 'default', description: '服务名字空间', name: 'kubernetes_namespace', trim: true
+    string defaultValue: '80', description: '服务内部端口', name: 'kubernetes_service_port', trim: true
+    booleanParam defaultValue: 'false',description: '服务是否对外暴露：设置false不对外暴漏端口;设置true对外暴漏端口;', name: 'is_external_service'
+    string defaultValue: '30000', description: '对外服务端口号（is_external_service为true时，必须传入）', name: 'kubernetes_external_port', trim: true
+
+    // java 启动参数
+    string defaultValue: '-Xmx350m',description: 'JVM_MEM启动参数', name: 'JVM_MEM', trim: true
+
+    // 部署
+    choice choices: ['unipay', 'test','dx','paas'], description: '部署目标平台', name: 'deploy_target'
+    choice choices: ['ssh', 'yaml','image'], description: '部署方式', name: 'deploy_type'
+    string defaultValue: '',description: '部署接口地址', name: 'Interface_host', trim: true
+
+  }
+}

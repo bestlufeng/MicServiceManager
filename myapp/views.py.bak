@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 from django.shortcuts import render,HttpResponse,HttpResponseRedirect
-from django.http import JsonResponse
 import models
 import time,datetime,json
 import requests
@@ -10,40 +9,27 @@ from kubernetes.client.rest import ApiException
 from pprint import pprint
 
 # Create your views here.
-
-# 封装Httpresponse
-# class JSONResponse(HttpResponse):
-#     """
-#     An HttpResponse that renders its content into JSON.
-#     """
-#     def __init__(self, data, **kwargs):
-#         content = JSONRenderer().render(data)
-#         kwargs['content_type'] = 'application/json'
-#         super(JSONResponse, self).__init__(content, **kwargs)
-
 # 主页跳转到前端页面
 def index(request):
     return HttpResponseRedirect('/static/index.html')
 
 # 健康检查地址
 def health_check(request):
-    # return HttpResponse("true")
-    a = {
-        "result": True,
-        "data": "yes"
-    }
-    return JsonResponse(a,safe=True)
+    return HttpResponse("true")
 
 # 后期更改的默认值
 namespace = "msm"
 # kube_server = "http://100.101.93.72:8080"
 kube_server = "https://192.168.1.6:82/k8s/clusters/c-vmmmm"
-kube_headers = {
-        'Authorization': "Bearer kubeconfig-user-xrmxp:4wnwmzm4rqml6tnmd959bcmt9n9hj29llmwmb8xt47hg75xvzcpbvh",
+kube_headers = {}
+
+
+# 定义response 标准格式
+std_use_response = {
+    "result": True,
+    "data": "",
+    "message": ""
 }
-
-
-
 
 def mic_service(request):
     std_response = {
@@ -94,17 +80,6 @@ def mic_service(request):
             std_response["error"] = str(e)
         return HttpResponse(json.dumps(std_response))
 
-def jenkins_file(request):
-    info = {
-        "name" : "app01",
-        "MicServiceId" : 1,
-        "image" : "docker.io/jenkins/jenkins",
-        "smsAddr" : "127.0.0.1"
-    }
-    return render(request,"Jenkinsfile",{
-        "info": info
-    })
-
 # 获取服务树
 def service(request):
     std_response = {
@@ -145,7 +120,7 @@ def kubenetes_deployment(request):
     appName = MicService["name"]
     appEnv = request.GET.get("envId")
     replicas = MicService["replicas"]
-    image = str(MicService["image"]+":"+"1.1.1")
+    image = str(MicService["image"]+":"+"1.0.2")
     containerPort = MicService["port"]
     deployment =  {
         "apiVersion": "extensions/v1beta1",
@@ -190,7 +165,6 @@ def kubenetes_deployment(request):
                                 "initialDelaySeconds": 30,
                                 "timeoutSeconds": 1
                             },
-                            "imagePullPolicy": "Always",
                             "envFrom":[
                                 {
                                     "configMapRef": {
@@ -224,7 +198,7 @@ def kubenetes_deployment(request):
     }
     if request.method == "GET":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/" + appName)
-        kube_data = requests.request(method=request.method,url=url,verify=False,headers=kube_headers)
+        kube_data = requests.request(method=request.method,url=url,headers=kube_headers)
         response = {
             "result" : True,
             "data": deployment,
@@ -234,11 +208,11 @@ def kubenetes_deployment(request):
         return HttpResponse(json.dumps(response))
     if request.method == "POST":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/")
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(deployment))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(deployment))
         return HttpResponse(response)
     if request.method == "PUT":
         url = str(kube_server+"/apis/extensions/v1beta1/namespaces/"+ namespace+ "-" + appEnv  +"/deployments/" + appName)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(deployment))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(deployment))
         return HttpResponse(response)
 
 
@@ -275,28 +249,28 @@ def kubenetes_service(request):
         },
         "type": "NodePort",
       },
+      "status": {
+        "loadBalancer": {}
+      }
     }
     if request.method == "GET":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/" + appName)
-        kube_data = requests.request(method=request.method,url=url,verify=False,headers=kube_headers).text
+        kube_data = requests.request(method=request.method,url=url,headers=kube_headers).text
         # print kube_data.text
         response = {
             "result" : True,
             "json_file": service,
             "kube_data" : json.loads(kube_data),
-            "message": None
+            "error": None
         }
         return HttpResponse(json.dumps(response))
     if request.method == "PUT":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/" + appName)
-        response_temp = json.loads(requests.request(method="GET",url=url,headers=kube_headers,data=json.dumps(service)).text)
-        response_temp["spec"]["ports"][0]["port"] = MicService["port"]
-        response_temp["spec"]["ports"][0]["targetPort"] = MicService["port"]
-        response = requests.request(method="PUT",url=url,headers=kube_headers,data=json.dumps(response_temp))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(service))
         return HttpResponse(response)
     if request.method == "POST":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/services/")
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers,data=json.dumps(service))
+        response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(service))
         return HttpResponse(response)
 
 
@@ -325,11 +299,11 @@ def config_map(request):
     }
     if request.method == 'POST':
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/")
-        response = requests.request(method="POST",url=url,verify=False,headers=kube_headers,data=json.dumps(data))
+        response = requests.request(method="POST",url=url,headers=kube_headers,data=json.dumps(data))
         return HttpResponse(response)
     if request.method == 'GET':
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/" + appName)
-        response = requests.request(method=request.method,url=url,verify=False,headers=kube_headers)
+        response = requests.request(method=request.method,url=url,headers=kube_headers)
         return HttpResponse(response)
     if request.method == "PUT":
         url = str(kube_server+"/api/v1/namespaces/"+ namespace+ "-" + appEnv  +"/configmaps/" + appName)
@@ -337,5 +311,3 @@ def config_map(request):
         print json.dumps(data)
         response = requests.request(method=request.method,url=url,headers=kube_headers,data=json.dumps(data))
         return HttpResponse(response)
-
-

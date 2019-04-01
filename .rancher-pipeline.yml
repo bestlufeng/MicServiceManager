@@ -1,0 +1,15 @@
+stages:
+- name: build
+  steps:
+  - publishImageConfig:
+      dockerfilePath: ./dockerfile
+      buildContext: .
+      tag: myimage:1.0
+      pushRemote: true
+      registry: 127.0.0.1:34167
+- name: deploy
+  steps:
+  - applyYamlConfig:
+      path: ./deployment.yaml
+timeout: 60
+branch: {}
