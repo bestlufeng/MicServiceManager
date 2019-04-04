@@ -35,14 +35,15 @@ class MicService(models.Model):
 class Env(models.Model):
     name = models.CharField(null=False,max_length=32)
     type = models.IntegerField(null=False) # 0代表测试环境 1代表生产环境 决定构建镜像的名称
-    gitlab_branch = models.CharField(null=False,max_length=10) # 代码分支，同一环境所使用的代码分之保持一致
+    image_domain = models.CharField(null=False,max_length=64) #  镜像库域名 如：harbor.chuangjiangx.com
+    image_project = models.CharField(null=False,max_length=32) #  镜像库域名 如：scpaas
+    gitlab_branch = models.CharField(null=False,max_length=32) # 代码分支，同一环境所使用的代码分之保持一致
     deploy_paas = models.CharField(null=False,max_length=10) # 部署平台 kubernetes qixinPaaS
     deploy_type = models.CharField(null=False,max_length=10) # k8s
     kubernetes_api = models.CharField(null=False,max_length=128) # k8s api server地址
     kubernetes_token = models.CharField(null=False,max_length=128) # k8s api token
     kubernetes_namespace = models.CharField(null=False,max_length=10) # 命名空间 同一环境服务部署在k8s同一命名空间
-
-    mark = models.CharField(null=True,max_length=64)
+    mark = models.CharField(null=True,max_length=64) # 备注
 
 
 # 基于环境的配置参数
@@ -50,6 +51,7 @@ class EnvConfigParams(models.Model):
     Env = models.ForeignKey(to=Env)
     key = models.CharField(null=False,max_length=32)
     value = models.CharField(null=True,max_length=128)
+    status = models.CharField(null=False,max_length=1) # 0 未启用 1 启用
 
 # 基于服务和环境的配置参数
 class MicServiceConfigParams(models.Model):
@@ -57,4 +59,4 @@ class MicServiceConfigParams(models.Model):
     Env = models.ForeignKey(to=Env)
     key = models.CharField(null=False,max_length=32)
     value = models.CharField(null=True,max_length=128)
-
+    status = models.CharField(null=False,max_length=1) # 0 未启用 1 启用

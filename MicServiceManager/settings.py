@@ -81,7 +81,7 @@ try:
     pymysql.install_as_MySQLdb()
 except:
     pass
-
+'''
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',  # 默认用mysql
@@ -92,6 +92,14 @@ DATABASES = {
         'PORT': '3306',                        # 默认3306
     },
 }
+'''
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+    }
+}
+
 
 # 建库语句
 # CREATE DATABASE MicServiceManager DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;
