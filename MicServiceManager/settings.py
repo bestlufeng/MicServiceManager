@@ -57,7 +57,7 @@ ROOT_URLCONF = 'MicServiceManager.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR,"templates")],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -81,14 +81,14 @@ try:
     pymysql.install_as_MySQLdb()
 except:
     pass
-'''
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',  # 默认用mysql
         'NAME': 'MicServiceManager',                 # 数据库名 (默认与APP_ID相同)
         'USER': 'root',                        # 你的数据库user
         'PASSWORD': 'redhat',                  # 你的数据库password
-        'HOST': 'localhost',               # 开发的时候，使用localhost
+        'HOST': '192.168.1.6',               # 开发的时候，使用localhost
         'PORT': '3306',                        # 默认3306
     },
 }
@@ -99,7 +99,7 @@ DATABASES = {
         'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
-
+'''
 
 # 建库语句
 # CREATE DATABASE MicServiceManager DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;

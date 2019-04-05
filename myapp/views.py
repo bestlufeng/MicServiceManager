@@ -5,8 +5,8 @@ from django.http import JsonResponse
 import models
 import time,datetime,json
 import requests
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+# from kubernetes import client, config
+# from kubernetes.client.rest import ApiException
 from pprint import pprint
 
 # Create your views here.
@@ -60,22 +60,12 @@ def mic_service(request):
     }
     MicServiceId = request.GET.get("MicServiceId")
     def get_data():
-        MicService = list(models.MicService.objects.filter(id=MicServiceId).values("limits_cpu",
-        "name",
-        "replicas",
-        "image",
-        "port",
-        "requests_cpu",
-        "requests_men",
-        "limits_mem",
-        "Service__name",
-        "Service_id",
-        "id",))[0]
+        MicService = list(models.MicService.objects.filter(id=MicServiceId).values())[0]
         return MicService
     if request.method == "GET":
         try:
             MicService = get_data()
-            std_response["data"] = MicService
+            return HttpResponse(str_response(data=MicService),content_type="application/json,charset=utf-8")
         except Exception as e:
             std_response["message"] = str(e)
             std_response["result"] = False
@@ -100,17 +90,124 @@ def mic_service(request):
             std_response["result"] = False
             std_response["error"] = str(e)
         return HttpResponse(json.dumps(std_response))
+def env(request,**kwargs):
+    envId = kwargs["envId"]
+    if request.method == "GET":
+        try:
+            envInfo = list(models.Env.objects.filter(id=envId).values())[0]
+            return HttpResponse(str_response(data=envInfo),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "PUT":
+        post_data = json.loads(request.body)
+        try:
+            models.Env.objects.filter(id=envId).update(**post_data)
+            envInfo = list(models.Env.objects.filter(id=envId).values())[0]
+            return HttpResponse(str_response(data=envInfo),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "DELETE":
+        try:
+            models.Env.objects.filter(id=envId).delete()
+            return HttpResponse(str_response(data="",message="delete successful"),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+def envs(request):
+    if request.method == "GET":
+        try:
+            envs = list(models.Env.objects.all().values())
+            return HttpResponse(str_response(data=envs),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "POST":
+        post_data = json.loads(request.body)
+        try:
+            obj = models.Env.objects.create(**post_data)
+            post_data["id"] = obj.id 
+            return HttpResponse(str_response(data=post_data,message="add env successful"),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
 
-def jenkins_file(request):
-    info = {
-        "name" : "app01",
-        "MicServiceId" : 1,
-        "image" : "docker.io/jenkins/jenkins",
-        "smsAddr" : "127.0.0.1"
-    }
-    return render(request,"Jenkinsfile",{
-        "info": info
-    })
+def env_config_params(request,**kwargs):
+    envId = kwargs["envId"]
+    if request.method == "GET":
+        try:
+            config_data = list(models.EnvConfigParams.objects.filter(Env_id=envId).values())
+            return HttpResponse(str_response(data=config_data),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "POST":    
+        try :
+            post_data = json.loads(request.body)
+            post_list = [ ]
+            for param in post_data:
+                param["Env_id"] = envId
+                obj = models.EnvConfigParams(
+                    **param
+                )
+                post_list.append(obj)
+            models.EnvConfigParams.objects.bulk_create(post_list)
+            return HttpResponse(str_response(data=post_data,message="post config params successful"),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "PUT":
+        pass
+
+def micservice_config_params(request,**kwargs):
+    envId = kwargs["envId"]
+    micServiceId = kwargs["micServiceId"]    
+    if request.method == "GET":
+        try:
+            config_data = list(models.MicServiceConfigParams.objects.filter(Env_id=envId,MicService=micServiceId).values())        
+            return HttpResponse(str_response(data=config_data),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+    if request.method == "POST":    
+        try :
+            post_data = json.loads(request.body)
+            post_list = [ ]
+            for param in post_data:
+                param["Env_id"] = envId
+                param["MicService_id"] = micServiceId
+                obj = models.MicServiceConfigParams(
+                    **param
+                )
+                post_list.append(obj)
+            models.MicServiceConfigParams.objects.bulk_create(post_list)
+            return HttpResponse(str_response(data=post_data,message="post config params successful"),content_type="application/json,charset=utf-8")
+        except Exception as e:
+            result = False
+            message = str(e)
+            return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+
+def jenkins_file(request,**kwargs):
+    envId = kwargs["envId"]
+    micServiceId = kwargs["micServiceId"]    
+    if request.method == "GET":
+        # try:
+        envInfo = list(models.Env.objects.filter(id=envId).values())[0]
+        micServiceInfo = list(models.MicService.objects.filter(id=micServiceId).values())[0]
+        return render(request,"Jenkinsfile-chuangjiangx",{"data":{"envInfo":envInfo, "micServiceInfo":micServiceInfo}})
+        # except Exception as e:
+        #     result = False
+        #     message = str(e)
+        #     return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
 
 # 获取服务树
 def service(request):
