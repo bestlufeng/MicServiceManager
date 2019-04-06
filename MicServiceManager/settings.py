@@ -145,3 +145,12 @@ STATICFILES_DIRS = (
     os.path.join(BASE_DIR,"static"),
 )
 STATIC_URL = '/static/'
+
+
+# jenkins 配置
+# docker 部署
+# docker run -p 8080:8080 -p 50000:50000 jenkins/jenkins
+jenkins_url = http://192.168.1.6:8080/
+jenkins_user = 'jenkins'
+jenkins_passwd = 'jenkins'
+jenkins_token = d7695577a5c34bda8581f94e85f6a318
