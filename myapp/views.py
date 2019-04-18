@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+import utils
 from django.shortcuts import render,HttpResponse,HttpResponseRedirect
 from django.http import JsonResponse
-import models
-import time,datetime,json
-import requests
+# from utils import MyJenkinsApi
 # from kubernetes import client, config
 # from kubernetes.client.rest import ApiException
 from pprint import pprint
+import models
+import time,datetime,json
+import requests
 
 # Create your views here.
 
@@ -204,10 +206,34 @@ def jenkins_file(request,**kwargs):
         envInfo = list(models.Env.objects.filter(id=envId).values())[0]
         micServiceInfo = list(models.MicService.objects.filter(id=micServiceId).values())[0]
         return render(request,"Jenkinsfile-chuangjiangx",{"data":{"envInfo":envInfo, "micServiceInfo":micServiceInfo}})
-        # except Exception as e:
-        #     result = False
-        #     message = str(e)
-        #     return HttpResponse(str_response(data="",message=message,result=result),content_type="application/json,charset=utf-8")
+
+# def render_pipeline(request,**kwargs):
+#     template_job = '111';
+#     xml = utils.jenkins_job(job_name="0",template_job="test-pipeline")
+    
+#     return render(request,"")
+
+
+def pipeline(request,**kwargs):
+    envId = kwargs["envId"]
+    micServiceId = kwargs["micServiceId"]
+    envName = models.Env.objects.filter(id=envId).first().name
+    micServiceName = models.MicService.objects.filter(id=micServiceId).first().name
+    if request.method == "POST":   
+        utils.jenkins_job(job_name=str(envName + "--" + micServiceName),template_job='111',type='create')
+        message = 'create job successful'
+    if request.method == "PUT":
+        utils.jenkins_job(job_name=str(envName + "--" + micServiceName),template_job='111',type='update')
+        message = 'update job successful'
+    if request.method == "DELETE":
+        utils.jenkins_job(job_name=str(envName + "--" + micServiceName),template_job='111',type='delete')
+        message = 'delete job successful'
+    if request.method == "GET":
+        data = utils.jenkins_job(job_name=str(envName + "--" + micServiceName),template_job='111',type='has_job')
+        message = 'query successful'
+        return HttpResponse(str_response(data=data,message=message),content_type="application/json,charset=utf-8")
+    return HttpResponse(str_response(data="",message=message),content_type="application/json,charset=utf-8")
+
 
 # 获取服务树
 def service(request):
