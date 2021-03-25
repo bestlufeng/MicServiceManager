@@ -18,7 +18,7 @@ PyJWT==1.7.1
 PyMySQL==0.9.3
 python-dateutil==2.8.0
 pytz==2018.9
-PyYAML==3.13
+PyYAML==5.4
 requests==2.21.0
 requests-oauthlib==1.2.0
 rsa==4.0
